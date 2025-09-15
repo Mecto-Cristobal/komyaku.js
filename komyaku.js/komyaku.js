@@ -26,6 +26,7 @@
     encounterRearmDistFactor: 1.6, // 再開までに必要な離隔（しきい値×係数）
     reverse: false,                // 見た目上 180° 反転
     frameWeights: null,            // [w0..w4] を与えると各フレームで微小前進
+    smoothAdvance: false,           // 連続前進（フレーム境界に依らない）
     // 参考 SVG のモーションをオプションで反映
     motionKeyTimes: [0, 0.2, 0.5, 0.8, 1],
     motionTranslateY: [0, 2, -1, 1, 0],        // px
@@ -36,6 +37,10 @@
     blinkEnabled: true,
     blinkEveryMsRange: [1400, 2600], // 次の瞬きまでのランダム範囲
     blinkDurMs: 120,                 // 目を細める時間
+    // 自発的分裂（遭遇イベントなしでも発生）
+    spontaneousSplitEnabled: true,
+    spontaneousSplitEveryMsRange: [7000, 14000],
+    spontaneousSplitOffsetPx: 18,
   };
 
   // 画面全体にかぶせる SVG レイヤーを用意
@@ -110,6 +115,11 @@
       const [bmin, bmax] = DEFAULTS.blinkEveryMsRange;
       this._blinkUntil = 0;
       this._blinkNextAt = Math.random() * (bmax - bmin) + bmin;
+      // 自発分裂スケジュール
+      if (DEFAULTS.spontaneousSplitEnabled) {
+        const [smin, smax] = DEFAULTS.spontaneousSplitEveryMsRange;
+        this._splitNextAt = Math.random() * (smax - smin) + smin;
+      }
 
       // 再会デバウンス用のメモ
       this.coolWith = null; // 直近で判定した相手の id
@@ -217,21 +227,51 @@
           this._blinkNextAt = this.timeMs + DEFAULTS.blinkDurMs + (Math.random() * (bmax - bmin) + bmin);
         }
       }
+      // スムーズ前進（1サイクルあたり speedPx 相当を連続配分）
+      if (DEFAULTS.smoothAdvance) {
+        const step = this.speedPx() * (dt / this.pulseMs());
+        if (step) this._advanceBy(step * this.dirSign());
+      }
+
       if (this.accum >= this.pulseMs()) {
         this.accum = 0;
         const prev = this.frame;
         this.frame = (this.frame + 1) % 5;
         this._applyEyeBody();
-        // recoil(4) → normal(0) の切替で本前進
-        if (prev === 4 && this.frame === 0) {
+        // パルス前進（スムーズを無効にしている場合のみ）
+        if (!DEFAULTS.smoothAdvance && prev === 4 && this.frame === 0) {
           this._advance();
-        } else if (Array.isArray(DEFAULTS.frameWeights)) {
+        } else if (!DEFAULTS.smoothAdvance && Array.isArray(DEFAULTS.frameWeights)) {
           // 各フレームでの微小前進（オプション）
           const w = DEFAULTS.frameWeights[this.frame] || 0;
           if (w) this._advanceBy(this.speedPx() * w * this.dirSign());
         }
       }
       this._applyTransform();
+
+      // 自発的分裂（上限に達していなければ分裂）
+      if (DEFAULTS.spontaneousSplitEnabled && this._splitNextAt != null && this.timeMs >= this._splitNextAt) {
+        if (window.KomyakuBanner && window.KomyakuBanner._all && window.KomyakuBanner._all.length < DEFAULTS.maxEntities) {
+          const offset = (Math.random() < 0.5 ? -1 : 1) * DEFAULTS.spontaneousSplitOffsetPx;
+          const child = window.KomyakuBanner.spawn({
+            color: this.color,
+            eye: this.eye,
+            edge: this.edge,
+            pos: clamp(this.pos + offset, 0, edgeLen(this.edge)),
+            clockwise: Math.random() < 0.5 ? this.clockwise : !this.clockwise,
+            stepLevel: this.stepLevel,
+            pulseSpeed: this.pulseSpeed,
+            dir: this.dir,
+          });
+          // 軽い彩度バリエーション（子にのみ）
+          if (child) {
+            try { child.color = this.color; } catch {}
+          }
+        }
+        // 次回スケジュール
+        const [smin, smax] = DEFAULTS.spontaneousSplitEveryMsRange;
+        this._splitNextAt = this.timeMs + (Math.random() * (smax - smin) + smin);
+      }
     }
 
     // 角の手前で分割しながら安全に移動する
