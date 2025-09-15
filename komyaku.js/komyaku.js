@@ -26,6 +26,16 @@
     encounterRearmDistFactor: 1.6, // 再開までに必要な離隔（しきい値×係数）
     reverse: false,                // 見た目上 180° 反転
     frameWeights: null,            // [w0..w4] を与えると各フレームで微小前進
+    // 参考 SVG のモーションをオプションで反映
+    motionKeyTimes: [0, 0.2, 0.5, 0.8, 1],
+    motionTranslateY: [0, 2, -1, 1, 0],        // px
+    motionScaleX: [1, 1.05, 0.95, 1.02, 1],    // 無指定で 1
+    motionScaleY: [1, 0.92, 1.06, 0.98, 1],
+    motionEnabled: true,
+    // まばたき設定
+    blinkEnabled: true,
+    blinkEveryMsRange: [1400, 2600], // 次の瞬きまでのランダム範囲
+    blinkDurMs: 120,                 // 目を細める時間
   };
 
   // 画面全体にかぶせる SVG レイヤーを用意
@@ -95,6 +105,11 @@
       this.frame = 0; // 0..4
       this.accum = 0; // 前回 tick からの経過時間（ms）
       this.dir = (o.dir ?? +1) >= 0 ? +1 : -1; // 視線/微小前進のヒント（+1/-1）
+      this.timeMs = 0; // ランタイムの蓄積（まばたき判定等に使用）
+      // まばたきの初期スケジュール（少しバラけさせる）
+      const [bmin, bmax] = DEFAULTS.blinkEveryMsRange;
+      this._blinkUntil = 0;
+      this._blinkNextAt = Math.random() * (bmax - bmin) + bmin;
 
       // 再会デバウンス用のメモ
       this.coolWith = null; // 直近で判定した相手の id
@@ -150,29 +165,58 @@
       const { x, y } = this.xy();
       let rot = this.headingDeg();
       if (DEFAULTS.reverse) rot += 180; // 全体反転
-      const s = 0.9; // 全体スケール
-      // 上辺・左辺では“足場が内側”に見えるようにスケール反転
+      const s = 0.9; // ベーススケール
+
+      // 参考アニメっぽい微小モーション（縦バウンス＋スクウォッシュ）
+      let ty = 0, sxm = 1, sym = 1;
+      if (DEFAULTS.motionEnabled) {
+        const t = this._cycleRatio(); // 0..1（5フレームで 1 周）
+        ty = interp1(DEFAULTS.motionKeyTimes, DEFAULTS.motionTranslateY, t) || 0;
+        sxm = interp1(DEFAULTS.motionKeyTimes, DEFAULTS.motionScaleX, t) || 1;
+        sym = interp1(DEFAULTS.motionKeyTimes, DEFAULTS.motionScaleY, t) || 1;
+      }
+
+      // 上辺・左辺では“足場が内側”に見えるように Y スケールを反転
       const needsFlip = (this.edge === 'top' || this.edge === 'left');
-      const flip = needsFlip ? ' scale(1,-1)' : '';
-      this.sprite.g.setAttribute('transform', `translate(${x},${y}) rotate(${rot}) scale(${s})${flip} translate(-24,-18)`);
+      const sx = s * sxm;
+      const sy = s * sym * (needsFlip ? -1 : 1);
+      this.sprite.g.setAttribute('transform', `translate(${x},${y + ty}) rotate(${rot}) scale(${sx},${sy}) translate(-24,-18)`);
     }
 
     // ボディ形状と目の描画更新
     _applyEyeBody() {
       this.sprite.body.setAttribute('d', BODY[this.frame]);
       const p = EYE[this.frame];
+      // 目の中心位置
       this.sprite.sclera.setAttribute('cx', p.cx);
       this.sprite.sclera.setAttribute('cy', p.cy);
       // 進行方向っぽく黒目を 1px シフト
       this.sprite.iris.setAttribute('cx', p.cx + (this.dir > 0 ? 1 : -1));
       this.sprite.iris.setAttribute('cy', p.cy);
+      // まばたき表現（楕円の縦半径を一時的に小さく）
+      if (DEFAULTS.blinkEnabled && this.timeMs < this._blinkUntil) {
+        this.sprite.sclera.setAttribute('ry', 1.0);
+        this.sprite.iris.setAttribute('ry', 0.3);
+      } else {
+        this.sprite.sclera.setAttribute('ry', 3.6);
+        this.sprite.iris.setAttribute('ry', 1.8);
+      }
       this.sprite.body.setAttribute('fill', this.color);
       this.sprite.iris.setAttribute('fill', this.eye);
     }
 
     // 1フレーム経過処理（アニメ進行と必要に応じて前進）
     tick(dt) {
+      this.timeMs += dt;
       this.accum += dt;
+      // まばたきスケジュール
+      if (DEFAULTS.blinkEnabled) {
+        if (this.timeMs >= this._blinkNextAt && this.timeMs >= this._blinkUntil) {
+          this._blinkUntil = this.timeMs + DEFAULTS.blinkDurMs;
+          const [bmin, bmax] = DEFAULTS.blinkEveryMsRange;
+          this._blinkNextAt = this.timeMs + DEFAULTS.blinkDurMs + (Math.random() * (bmax - bmin) + bmin);
+        }
+      }
       if (this.accum >= this.pulseMs()) {
         this.accum = 0;
         const prev = this.frame;
@@ -254,6 +298,27 @@
       }
       // pos は新しい「辺上の位置」（x か y のどちらか）
     }
+  }
+  // 5フレームを一巡とみなした 0..1 の比率
+  Komyaku.prototype._cycleRatio = function () {
+    const local = Math.min(1, Math.max(0, this.accum / this.pulseMs()));
+    return (this.frame + local) / 5;
+  };
+
+  // 0..1 の比率でキータイム補間（線形）
+  function interp1(times, values, t) {
+    if (!Array.isArray(times) || !Array.isArray(values) || times.length !== values.length || !times.length) return null;
+    if (t <= times[0]) return values[0];
+    if (t >= times[times.length - 1]) return values[values.length - 1];
+    for (let i = 0; i < times.length - 1; i++) {
+      const t0 = times[i], t1 = times[i + 1];
+      if (t >= t0 && t <= t1) {
+        const v0 = values[i], v1 = values[i + 1];
+        const r = (t - t0) / Math.max(1e-6, (t1 - t0));
+        return v0 + (v1 - v0) * r;
+      }
+    }
+    return values[values.length - 1];
   }
 
   // 再会（同じ辺で近づいたとき）の処理。ペアごとにデバウンス

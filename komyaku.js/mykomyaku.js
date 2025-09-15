@@ -37,6 +37,8 @@
       decisionEvery: 12, // 互換保持：本体側では未使用でも可
       reverse: REVERSE,
       frameWeights: FRAME_WEIGHTS,
+      motionEnabled: true,
+      blinkEnabled: true,
     });
 
     // 下辺に 3 匹をランダム間隔で配置（一定の間隔を確保）
