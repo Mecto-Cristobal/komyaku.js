@@ -29,10 +29,15 @@
     smoothAdvance: false,           // 連続前進（フレーム境界に依らない）
     // 参考 SVG のモーションをオプションで反映
     motionKeyTimes: [0, 0.2, 0.5, 0.8, 1],
-    motionTranslateY: [0, 2, -1, 1, 0],        // px
+    motionTranslateY: [0, 2, -1, 1, 1],        // px
     motionScaleX: [1, 1.05, 0.95, 1.02, 1],    // 無指定で 1
     motionScaleY: [1, 0.92, 1.06, 0.98, 1],
     motionEnabled: true,
+    // 追加のサイン波ボブ（ローカル法線方向の上下）
+    bobSinEnabled: true,
+    bobAmplitudePx: 3.5,
+    bobFrequency: 1.0,       // 1 周期あたりの回数（= 1で1回上下）
+    squashAmount: 0.08,      // サイン波に連動したスクウォッシュ量
     // まばたき設定
     blinkEnabled: true,
     blinkEveryMsRange: [1400, 2600], // 次の瞬きまでのランダム範囲
@@ -41,6 +46,9 @@
     spontaneousSplitEnabled: true,
     spontaneousSplitEveryMsRange: [7000, 14000],
     spontaneousSplitOffsetPx: 18,
+    // 生物感（小さな“ため”）
+    cycleHoldChance: 0.18,
+    cycleHoldMsRange: [40, 120],
   };
 
   // 画面全体にかぶせる SVG レイヤーを用意
@@ -115,6 +123,9 @@
       const [bmin, bmax] = DEFAULTS.blinkEveryMsRange;
       this._blinkUntil = 0;
       this._blinkNextAt = Math.random() * (bmax - bmin) + bmin;
+      // 個体ごとのボブ位相と周波数微差
+      this._phase = Math.random() * Math.PI * 2;
+      this._bobFreq = (DEFAULTS.bobFrequency || 1.0) * (0.9 + Math.random()*0.2);
       // 自発分裂スケジュール
       if (DEFAULTS.spontaneousSplitEnabled) {
         const [smin, smax] = DEFAULTS.spontaneousSplitEveryMsRange;
@@ -181,16 +192,33 @@
       let ty = 0, sxm = 1, sym = 1;
       if (DEFAULTS.motionEnabled) {
         const t = this._cycleRatio(); // 0..1（5フレームで 1 周）
-        ty = interp1(DEFAULTS.motionKeyTimes, DEFAULTS.motionTranslateY, t) || 0;
-        sxm = interp1(DEFAULTS.motionKeyTimes, DEFAULTS.motionScaleX, t) || 1;
-        sym = interp1(DEFAULTS.motionKeyTimes, DEFAULTS.motionScaleY, t) || 1;
+        const tyKF = interp1(DEFAULTS.motionKeyTimes, DEFAULTS.motionTranslateY, t) || 0;
+        const sxKF = interp1(DEFAULTS.motionKeyTimes, DEFAULTS.motionScaleX, t) || 1;
+        const syKF = interp1(DEFAULTS.motionKeyTimes, DEFAULTS.motionScaleY, t) || 1;
+
+        // サイン波ボブ（“ぴょーん”感）— 個体ごとに位相をずらす
+        let tySin = 0, sxSin = 0, sySin = 0;
+        if (DEFAULTS.bobSinEnabled) {
+          const omega = 2 * Math.PI * (this._bobFreq || DEFAULTS.bobFrequency);
+          const sinv = Math.sin(omega * t + this._phase);
+          const cosv = Math.cos(omega * t + this._phase);
+          tySin = DEFAULTS.bobAmplitudePx * sinv;
+          const q = DEFAULTS.squashAmount * cosv; // 速度に連動（位相90°）
+          sxSin = 1 + q;
+          sySin = 1 - q;
+        }
+
+        ty = tyKF + tySin;
+        sxm = sxKF * (sxSin || 1);
+        sym = syKF * (sySin || 1);
       }
 
       // 上辺・左辺では“足場が内側”に見えるように Y スケールを反転
       const needsFlip = (this.edge === 'top' || this.edge === 'left');
       const sx = s * sxm;
       const sy = s * sym * (needsFlip ? -1 : 1);
-      this.sprite.g.setAttribute('transform', `translate(${x},${y + ty}) rotate(${rot}) scale(${sx},${sy}) translate(-24,-18)`);
+      // ty はローカル座標（法線方向）に適用する
+      this.sprite.g.setAttribute('transform', `translate(${x},${y}) rotate(${rot}) translate(0,${ty}) scale(${sx},${sy}) translate(-24,-18)`);
     }
 
     // ボディ形状と目の描画更新
@@ -218,6 +246,13 @@
     // 1フレーム経過処理（アニメ進行と必要に応じて前進）
     tick(dt) {
       this.timeMs += dt;
+      // ホールド中は見た目だけ更新して動きを止める
+      if (this._holdUntil && this.timeMs < this._holdUntil) {
+        this._applyEyeBody();
+        this._applyTransform();
+        return;
+      }
+      this._holdUntil = 0;
       this.accum += dt;
       // まばたきスケジュール
       if (DEFAULTS.blinkEnabled) {
@@ -238,6 +273,12 @@
         const prev = this.frame;
         this.frame = (this.frame + 1) % 5;
         this._applyEyeBody();
+        // ため（recoil→normal 境界で稀に数十 ms ホールド）
+        if (prev === 4 && this.frame === 0 && Math.random() < DEFAULTS.cycleHoldChance) {
+          const r = DEFAULTS.cycleHoldMsRange || [40,120];
+          const hmin = r[0] ?? 40, hmax = r[1] ?? 120;
+          this._holdUntil = this.timeMs + (Math.random() * (hmax - hmin) + hmin);
+        }
         // パルス前進（スムーズを無効にしている場合のみ）
         if (!DEFAULTS.smoothAdvance && prev === 4 && this.frame === 0) {
           this._advance();

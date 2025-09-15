@@ -8,7 +8,7 @@
   const REVERSE = false;
   // アニメの 5 フレームそれぞれに対して、1周期あたり前進の“配分”を与える
   // （0..1 の比率。合計は 1 でなくても OK）
-  const FRAME_WEIGHTS = [0.14, 0.22, 0.36, 0.14, 0.14]; // 伸び>接地>戻り
+  const FRAME_WEIGHTS = [0.12, 0.20, 0.44, 0.16, 0.08]; // 中央で一番進む配分
 
   // 最低表示数（赤/青/白）。例: {red:1, blue:1, white:1}
   const MIN_SPECIES = { red: 1, blue: 1, white: 1 };
@@ -32,7 +32,7 @@
   ready(() => ensureBanner(() => {
     window.KomyakuBanner.init({
       pulseSpeed: 5,
-      stepLevel: 2,
+      stepLevel: 4,
       margin: 6,
       marginRightExtra: 2, // 右辺広め
       collidePx: 44,
@@ -41,12 +41,18 @@
       reverse: REVERSE,
       frameWeights: FRAME_WEIGHTS,
       motionEnabled: true,
-      motionTranslateY: [0, 3, -2, 1.5, 0],
-      motionScaleX: [1, 1.07, 0.93, 1.03, 1],
-      motionScaleY: [1, 0.90, 1.08, 0.97, 1],
+      motionTranslateY: [0, 6, -5, 3.2, 0],
+      motionScaleX: [1, 1.14, 0.88, 1.07, 1],
+      motionScaleY: [1, 0.84, 1.12, 0.95, 1],
       smoothAdvance: false,
+      bobSinEnabled: true,
+      bobAmplitudePx: 5.2,
+      bobFrequency: 1.3,
+      squashAmount: 0.12,
       blinkEnabled: true,
       spontaneousSplitEnabled: true,
+      cycleHoldChance: 0.25,
+      cycleHoldMsRange: [45, 120],
     });
 
     // 下辺に 3 匹をランダム間隔で配置（一定の間隔を確保）
