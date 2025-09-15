@@ -199,16 +199,16 @@
     if(stillCooling || notYetRearmed) return; // クール中 or まだ離れてない
 
     // —— ここで初めて再会処理 ——（結果はランダム）
-    const r=randInt(0,2); // 0:すれ違い 1:融合 2:増える
-    if(r===0){
+    const r=randInt(0,9); // 0,1,2:すれ違い 3,4:融合 5,6,7,8,9:増える
+    if(r<3){
       a.pos += a.dirSign?.()??0 * 8;
       b.pos += b.dirSign?.()??0 * 8;
-    }else if(r===1){
+    }else if(r<5){
       // 融合（bを消してaの色に混ぜるか、どちらかの色）
       a.color = Math.random()<0.5 ? a.color : b.color;
       try{ stage.removeChild(b.sprite.g);}catch{}
       const arr=window.KomyakuBanner._all; const i=arr.indexOf(b); if(i>-1) arr.splice(i,1);
-    }else if(r===2){
+    }else if(r>4){
       // 増殖：上限確認
       if(window.KomyakuBanner._all.length < DEFAULTS.maxEntities){
         const nb=new Komyaku({

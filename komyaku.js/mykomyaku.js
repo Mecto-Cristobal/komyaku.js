@@ -16,7 +16,7 @@
     else if(tries<300){ requestAnimationFrame(()=>ensureBanner(cb,tries+1)); }
   }
 
-  // ===== パッチ処理 =====
+  // ===== パッチ =====
   function patchKomyaku(k){
     // 前進制御をフレーム重みベースに
     /*if(!k.__advanceOriginal){
