@@ -16,7 +16,7 @@
   const nextEdge=(edge,turn)=>{ const i=EDGES.indexOf(edge); return EDGES[(i+(turn>0?1:-1)+4)%4]; };
   const edgeLen = e => (e==="top"||e==="bottom")? innerWidth : innerHeight;
   const clamp=(n,a,b)=>Math.max(a,Math.min(b,n));
-  const FRAME_WEIGHTS = [0.18, 0.26, 0.34, 0.18, 0.04]; // 伸び>接地>戻り
+  const FRAME_WEIGHTS = [0.14, 0.22, 0.36, 0.14, 0.14]; // 伸び>接地>戻り
 
   function microAdvance(k, dist){
     const len=edgeLen(k.edge);

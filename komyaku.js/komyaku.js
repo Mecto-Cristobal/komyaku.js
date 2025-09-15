@@ -84,7 +84,7 @@
       this._applyEyeBody();
       this._applyTransform(true);
     }
-    speedPx(){ return [9,13,17,23,30][this.stepLevel-1]; }
+    speedPx(){ return [10,17,23,34,50][this.stepLevel-1]; }
     pulseMs(){ return [420,340,280,230,190][this.pulseSpeed-1]; }
 
     xy(){
@@ -100,8 +100,8 @@
       switch(this.edge){
         case "top":    return this.dir>0?   0:180;
         case "right":  return this.dir>0?  90:-90;
-        case "bottom": return this.dir>0? 180:  0; // topと逆
-        case "left":   return this.dir>0? -90: 90;
+        case "bottom": return this.dir>0 ?   0 : 180;
+        case "left":   return this.dir>0 ?  90 : -90;
       }
     }
     _applyTransform(){
