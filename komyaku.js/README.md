@@ -5,7 +5,7 @@
 
 同梱ファイル:
 - `komyaku.js`: 本体（グローバル `window.KomyakuBanner` を提供）
-- `mykomyaku.js`: 利用者が編集するカスタム設定・軽い挙動パッチ
+- `mykomyaku.js`: 利用者が編集する設定＆初期スポーン用（パッチは本体に統合済み）
 
 ## 使い方
 HTML に読み込むだけで動きます（`mykomyaku.js` で初期スポーン）。
@@ -28,6 +28,9 @@ HTML に読み込むだけで動きます（`mykomyaku.js` で初期スポーン
 - `KomyakuBanner.init(opts)`
   - 既定値を上書きします。戻り値は `KomyakuBanner`。
   - 主なオプション: `pulseSpeed(1..5)`, `stepLevel(1..5)`, `margin`, `marginRightExtra`, `collidePx`, `maxEntities`。
+  - 拡張オプション（mykomyaku 由来）:
+    - `reverse: boolean` 画面全体の見た目向きを 180° 反転
+    - `frameWeights: [number,number,number,number,number] | null` 各フレームでの微小前進配分（省略/`null`で無効）
 - `KomyakuBanner.spawn(options)`
   - 1 匹生成して返します（上限到達時は `null`）。
   - 主な `options`:
@@ -38,7 +41,7 @@ HTML に読み込むだけで動きます（`mykomyaku.js` で初期スポーン
     - `clockwise: boolean` 右回り（`true`）/左回り（`false`）
     - `stepLevel: 1..5` 歩幅の段階
     - `pulseSpeed: 1..5` テンポの段階
-    - 任意: `dir: +1|-1` 視線微調整用のヒント（`mykomyaku.js` のみが参照）
+    - 任意: `dir: +1|-1` 視線・微小前進のヒント
 - `KomyakuBanner.count()`
   - 画面上の匹数を返します。
 
@@ -86,14 +89,12 @@ setTimeout(() => {
 
 5) 全体の見た目を 180° 反転（REVERSE）
 ```js
-// mykomyaku.js 内の先頭近くにある REVERSE を true にします。
-const REVERSE = true; // ← 反転
+KomyakuBanner.init({ reverse: true });
 ```
 
-6) フレーム配分で“脈打ち感”を変える
+6) フレーム配分で“脈打ち感”を変える（微小前進を有効化）
 ```js
-// mykomyaku.js 内の FRAME_WEIGHTS を編集（5 要素、合計 1 でなくても OK）
-const FRAME_WEIGHTS = [0.10, 0.25, 0.40, 0.15, 0.10];
+KomyakuBanner.init({ frameWeights: [0.10, 0.25, 0.40, 0.15, 0.10] });
 ```
 
 7) 上辺スタート／右辺スタートの例

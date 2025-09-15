@@ -24,6 +24,8 @@
     maxEntities: 12,               // 同時表示の上限
     encounterCooldownMs: 500,      // 再会後に再判定しない最短時間
     encounterRearmDistFactor: 1.6, // 再開までに必要な離隔（しきい値×係数）
+    reverse: false,                // 見た目上 180° 反転
+    frameWeights: null,            // [w0..w4] を与えると各フレームで微小前進
   };
 
   // 画面全体にかぶせる SVG レイヤーを用意
@@ -92,6 +94,7 @@
       this.clockwise = (o.clockwise !== false); // 省略時は右回り
       this.frame = 0; // 0..4
       this.accum = 0; // 前回 tick からの経過時間（ms）
+      this.dir = (o.dir ?? +1) >= 0 ? +1 : -1; // 視線/微小前進のヒント（+1/-1）
 
       // 再会デバウンス用のメモ
       this.coolWith = null; // 直近で判定した相手の id
@@ -145,12 +148,13 @@
     // 表示位置・角度の更新
     _applyTransform() {
       const { x, y } = this.xy();
-      const rot = this.headingDeg();
+      let rot = this.headingDeg();
+      if (DEFAULTS.reverse) rot += 180; // 全体反転
       const s = 0.9; // 全体スケール
-      this.sprite.g.setAttribute(
-        'transform',
-        `translate(${x},${y}) rotate(${rot}) scale(${s}) translate(-24,-18)`
-      );
+      // 上辺・左辺では“足場が内側”に見えるようにスケール反転
+      const needsFlip = (this.edge === 'top' || this.edge === 'left');
+      const flip = needsFlip ? ' scale(1,-1)' : '';
+      this.sprite.g.setAttribute('transform', `translate(${x},${y}) rotate(${rot}) scale(${s})${flip} translate(-24,-18)`);
     }
 
     // ボディ形状と目の描画更新
@@ -159,7 +163,8 @@
       const p = EYE[this.frame];
       this.sprite.sclera.setAttribute('cx', p.cx);
       this.sprite.sclera.setAttribute('cy', p.cy);
-      this.sprite.iris.setAttribute('cx', p.cx + 1);
+      // 進行方向っぽく黒目を 1px シフト
+      this.sprite.iris.setAttribute('cx', p.cx + (this.dir > 0 ? 1 : -1));
       this.sprite.iris.setAttribute('cy', p.cy);
       this.sprite.body.setAttribute('fill', this.color);
       this.sprite.iris.setAttribute('fill', this.eye);
@@ -173,8 +178,14 @@
         const prev = this.frame;
         this.frame = (this.frame + 1) % 5;
         this._applyEyeBody();
-        // recoil(4) → normal(0) に切り替わるタイミングのみ前進
-        if (prev === 4 && this.frame === 0) this._advance();
+        // recoil(4) → normal(0) の切替で本前進
+        if (prev === 4 && this.frame === 0) {
+          this._advance();
+        } else if (Array.isArray(DEFAULTS.frameWeights)) {
+          // 各フレームでの微小前進（オプション）
+          const w = DEFAULTS.frameWeights[this.frame] || 0;
+          if (w) this._advanceBy(this.speedPx() * w * this.dirSign());
+        }
       }
       this._applyTransform();
     }
@@ -198,6 +209,25 @@
           this._turnToNextEdge(towardEnd);
         }
         // 新しい辺の範囲にクランプ
+        this.pos = clamp(this.pos, 0, edgeLen(this.edge));
+      }
+    }
+
+    // 指定距離だけ“いまの辺に沿って”前進（角は安全に繰り越し）
+    _advanceBy(distance) {
+      let remaining = distance;
+      while (Math.abs(remaining) > 0.0001) {
+        const len = edgeLen(this.edge);
+        const towardEnd = (remaining > 0);
+        const distToEdge = towardEnd ? (len - this.pos) : (0 - this.pos);
+        if (Math.abs(remaining) <= Math.abs(distToEdge)) {
+          this.pos += remaining;
+          remaining = 0;
+        } else {
+          this.pos += distToEdge;
+          remaining -= distToEdge;
+          this._turnToNextEdge(towardEnd);
+        }
         this.pos = clamp(this.pos, 0, edgeLen(this.edge));
       }
     }
@@ -306,4 +336,3 @@
     }
   });
 })();
-
